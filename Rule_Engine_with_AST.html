@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rule Engine</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+        }
+        input, textarea, button {
+            width: 100%;
+            margin: 10px 0;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Rule Engine</h1>
+        
+        <h2>Create Rule</h2>
+        <textarea id="rule-input" placeholder="Enter rule, e.g., ((age > 30 AND department == 'Sales') OR (age < 25 AND department == 'Marketing')) AND (salary > 50000 OR experience > 5)"></textarea>
+        <button onclick="createRule()">Create Rule</button>
+        <pre id="rule-output">Rule AST will be displayed here...</pre>
+
+        <h2>Combine Rules</h2>
+        <textarea id="combine-rules-input" placeholder="Enter rules as a JSON array, e.g., ['((age > 30 AND department == 'Sales') OR (age < 25 AND department == 'Marketing'))', '((age >= 25 AND department == 'HR'))']"></textarea>
+        <button onclick="combineRules()">Combine Rules</button>
+        <pre id="combine-output">Combined Rule AST will be displayed here...</pre>
+
+        <h2>Evaluate Rule</h2>
+        <textarea id="evaluate-data" placeholder="Enter JSON data, e.g., { 'age': 36, 'department': 'Sales', 'salary': 55000, 'experience': 4 }"></textarea>
+        <button onclick="evaluateRule()">Evaluate</button>
+        <pre id="evaluate-output">Evaluation result will be displayed here...</pre>
+    </div>
+
+    <script>
+        class Node {
+            constructor(type, value = null, left = null, right = null) {
+                this.type = type;
+                this.value = value;
+                this.left = left;
+                this.right = right;
+            }
+        }
+
+        function createRule() {
+            const ruleInput = document.getElementById('rule-input').value;
+            try {
+                const ast = parseRuleToAST(ruleInput);
+                document.getElementById('rule-output').innerText = JSON.stringify(ast, null, 2);
+            } catch (error) {
+                document.getElementById('rule-output').innerText = 'Error parsing rule: ' + error.message;
+            }
+        }
+
+        function parseRuleToAST(ruleString) {
+            const cleanedRule = ruleString.replace(/\bAND\b/g, '&&').replace(/\bOR\b/g, '||');
+            const tokens = tokenize(cleanedRule);
+            return parseTokensToAST(tokens);
+        }
+
+        function tokenize(expression) {
+            return expression.match(/(\w+|\d+|[><=]+|&&|\|\||\(|\)|'[^']*')/g);
+        }
+
+        function parseTokensToAST(tokens) {
+            const stack = [];
+            for (const token of tokens) {
+                if (token === '&&' || token === '||') {
+                    const right = stack.pop();
+                    const left = stack.pop();
+                    const node = new Node('operator', token, left, right);
+                    stack.push(node);
+                } else if (/\w+|[><=]+|'\w+'|\d+/.test(token)) {
+                    stack.push(new Node('operand', token));
+                }
+            }
+            return stack[0];
+        }
+
+        function combineRules() {
+            const rulesInput = document.getElementById('combine-rules-input').value;
+            try {
+                const rules = JSON.parse(rulesInput);
+                const asts = rules.map(parseRuleToAST);
+                const combinedAST = asts.reduce((acc, ast) => {
+                    return new Node('operator', '||', acc, ast);
+                });
+                document.getElementById('combine-output').innerText = JSON.stringify(combinedAST, null, 2);
+            } catch (error) {
+                document.getElementById('combine-output').innerText = 'Error combining rules: ' + error.message;
+            }
+        }
+
+        function evaluateRule() {
+            const ruleJson = JSON.parse(document.getElementById('rule-output').innerText);
+            const evaluateData = JSON.parse(document.getElementById('evaluate-data').value);
+            try {
+                const result = evaluateAST(ruleJson, evaluateData);
+                document.getElementById('evaluate-output').innerText = `Evaluation result: ${result}`;
+            } catch (error) {
+                document.getElementById('evaluate-output').innerText = 'Error evaluating rule: ' + error.message;
+            }
+        }
+
+        function evaluateAST(node, data) {
+            if (!node) return false;
+
+            if (node.type === 'operand') {
+                const [key, operator, value] = node.value.split(/(>|<|>=|<=|==|!=)/);
+                const dataValue = data[key.trim()];
+
+                switch (operator) {
+                    case '>': return dataValue > parseFloat(value);
+                    case '<': return dataValue < parseFloat(value);
+                    case '>=': return dataValue >= parseFloat(value);
+                    case '<=': return dataValue <= parseFloat(value);
+                    case '==': return dataValue == value.replace(/'/g, '');
+                    case '!=': return dataValue != value.replace(/'/g, '');
+                    default: return false;
+                }
+            }
+
+            if (node.type === 'operator') {
+                const leftResult = evaluateAST(node.left, data);
+                const rightResult = evaluateAST(node.right, data);
+
+                if (node.value === '&&') {
+                    return leftResult && rightResult;
+                } else if (node.value === '||') {
+                    return leftResult || rightResult;
+                }
+            }
+
+            return false;
+        }
+    </script>
+</body>
+</html>
